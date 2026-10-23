@@ -6,36 +6,39 @@ const STATUS_TITLES = { draft: 'Черновик', published: 'Опублико�
 
 const app = document.getElementById('app');
 
-// Autosave of the editor that is currently open (if any). Navigation waits
-// for it so a fast click away does not lose the last edit.
-let activeAutosave = null;
+// Editor that is currently open (if any). Changes are saved only by the
+// "Сохранить" button, so leaving with unsaved changes has to be confirmed.
+let activeEditor = null;
 
 // ---------- routing ----------
 
+// Each history entry remembers its position, so a back/forward move can be
+// undone with history.go() without adding extra entries.
+let historyIndex = (history.state && history.state.idx) || 0;
+history.replaceState({ idx: historyIndex }, '');
+let undoingPop = false;
+
 async function navigate(path, { replace = false } = {}) {
   if (!(await leaveEditor())) return;
-  if (replace) history.replaceState(null, '', path);
-  else history.pushState(null, '', path);
+  if (replace) history.replaceState({ idx: historyIndex }, '', path);
+  else history.pushState({ idx: ++historyIndex }, '', path);
   route();
 }
 
 async function leaveEditor() {
-  if (!activeAutosave) return true;
-  const saved = await activeAutosave.flush();
-  if (
-    !saved &&
-    !(await confirmDialog({
-      title: 'Изменения не сохранены',
-      message: 'Последние правки не удалось сохранить. Если уйти, они пропадут.',
-      confirmText: 'Уйти без сохранения',
-      cancelText: 'Остаться',
-      danger: true,
-    }))
-  ) {
-    return false;
+  if (!activeEditor || !activeEditor.isDirty()) {
+    activeEditor = null;
+    return true;
   }
-  activeAutosave = null;
-  return true;
+  const leave = await confirmDialog({
+    title: 'Есть несохранённые изменения',
+    message: 'Если уйти со страницы, правки пропадут. Чтобы их сохранить, останьтесь и нажмите «Сохранить».',
+    confirmText: 'Уйти без сохранения',
+    cancelText: 'Остаться',
+    danger: true,
+  });
+  if (leave) activeEditor = null;
+  return leave;
 }
 
 document.addEventListener('click', (e) => {
@@ -45,15 +48,28 @@ document.addEventListener('click', (e) => {
   navigate(a.getAttribute('href'));
 });
 
-window.addEventListener('popstate', () => {
-  activeAutosave && activeAutosave.flush();
-  activeAutosave = null;
+// Browser back/forward: the URL has already changed, so step back to the
+// editor while asking, and only then repeat the move if the user agrees.
+window.addEventListener('popstate', async (e) => {
+  const idx = (e.state && e.state.idx) || 0;
+  if (undoingPop) {
+    undoingPop = false;
+    return;
+  }
+  if (activeEditor && activeEditor.isDirty()) {
+    const delta = idx - historyIndex;
+    undoingPop = true;
+    history.go(-delta);
+    if (await leaveEditor()) history.go(delta);
+    return;
+  }
+  historyIndex = idx;
+  activeEditor = null;
   route();
 });
 
 window.addEventListener('beforeunload', (e) => {
-  if (activeAutosave && activeAutosave.isDirty()) {
-    activeAutosave.flush();
+  if (activeEditor && activeEditor.isDirty()) {
     e.preventDefault();
     e.returnValue = '';
   }
@@ -236,9 +252,19 @@ function publishBar(form, { onChange, notice }) {
   };
 
   async function setStatus(action) {
-    if (activeAutosave && !(await activeAutosave.flush())) {
-      toast('Сначала исправьте ошибки сохранения');
-      return;
+    // Publishing makes the saved version live, so unsaved edits are saved
+    // first, but only with the manager's consent.
+    if (action === 'publish' && activeEditor && activeEditor.isDirty()) {
+      const ok = await confirmDialog({
+        title: 'Сохранить изменения перед публикацией?',
+        message: 'Студенты увидят форму в сохранённом виде. Несохранённые правки сейчас будут сохранены.',
+        confirmText: 'Сохранить и опубликовать',
+      });
+      if (!ok) return;
+      if (!(await activeEditor.save())) {
+        toast('Не удалось сохранить — исправьте ошибки');
+        return;
+      }
     }
     try {
       const updated = await api('POST', `/api/forms/${form.id}/${action}`);
@@ -280,53 +306,55 @@ function publishBar(form, { onChange, notice }) {
 
 // ---------- editor ----------
 
-function createAutosave(form, onState) {
-  let timer = null;
-  let inflight = null;
-  let dirty = false;
+// Tracks unsaved edits of the open form and saves them on request.
+// `version` grows with every edit, so an edit made while a save is in flight
+// keeps the form dirty after that save completes.
+function createSaver(form, onState) {
+  let version = 0;
+  let savedVersion = 0;
+  let saving = null;
 
-  async function run() {
-    clearTimeout(timer);
-    timer = null;
-    while (inflight) await inflight;
-    if (!dirty) return;
-    dirty = false;
+  async function doSave() {
+    const v = version;
     onState('saving');
-    const payload = {
-      title: form.title,
-      description: form.description,
-      successMessage: form.successMessage,
-      fields: form.fields,
-    };
-    inflight = api('PUT', `/api/forms/${form.id}`, payload)
-      .then((saved) => {
-        form.updatedAt = saved.updatedAt;
-        onState(dirty ? 'dirty' : 'saved');
-      })
-      .catch((err) => {
-        dirty = true;
-        onState('error', err);
-      })
-      .finally(() => {
-        inflight = null;
+    try {
+      const saved = await api('PUT', `/api/forms/${form.id}`, {
+        title: form.title,
+        description: form.description,
+        successMessage: form.successMessage,
+        fields: form.fields,
       });
-    await inflight;
+      form.updatedAt = saved.updatedAt;
+      savedVersion = v;
+      onState(version === savedVersion ? 'saved' : 'dirty');
+      return version === savedVersion;
+    } catch (err) {
+      onState('error', err);
+      return false;
+    } finally {
+      saving = null;
+    }
   }
 
   return {
-    schedule() {
-      dirty = true;
+    markDirty() {
+      version++;
       onState('dirty');
-      clearTimeout(timer);
-      timer = setTimeout(run, 600);
     },
-    async flush() {
-      await run();
-      return !dirty;
+    isDirty: () => version !== savedVersion,
+    save() {
+      if (!saving) saving = doSave();
+      return saving;
     },
-    isDirty: () => dirty || !!inflight,
   };
 }
+
+document.addEventListener('keydown', (e) => {
+  if (activeEditor && (e.ctrlKey || e.metaKey) && e.code === 'KeyS') {
+    e.preventDefault();
+    activeEditor.save();
+  }
+});
 
 function newFieldId() {
   return 'f_' + Math.random().toString(16).slice(2, 12);
@@ -340,28 +368,56 @@ function newField(type) {
 }
 
 function renderEditor(container, form, { onTitle, notice }) {
-  const status = h('div', { class: 'save-status' }, 'Изменения сохраняются автоматически');
-  const autosave = createAutosave(form, (state, err) => {
+  const statusText = h('span', { class: 'save-text' }, 'Изменений нет');
+  const saveBtn = h('button', { class: 'btn primary', disabled: true, title: 'Ctrl+S', onclick: () => saver.save() }, 'Сохранить');
+  const revertBtn = h(
+    'button',
+    {
+      class: 'btn',
+      hidden: true,
+      onclick: async () => {
+        const ok = await confirmDialog({
+          title: 'Отменить изменения?',
+          message: 'Форма вернётся к последней сохранённой версии.',
+          confirmText: 'Отменить изменения',
+          cancelText: 'Продолжить редактирование',
+          danger: true,
+        });
+        if (!ok) return;
+        activeEditor = null;
+        route();
+      },
+    },
+    'Отменить изменения'
+  );
+  const status = h('div', { class: 'save-bar' }, statusText, h('span', { class: 'spacer' }), revertBtn, saveBtn);
+
+  const saver = createSaver(form, (state, err) => {
     status.classList.toggle('error', state === 'error');
+    status.classList.toggle('dirty', state === 'dirty' || state === 'error');
+    saveBtn.disabled = state === 'saving' || state === 'saved';
+    saveBtn.textContent = state === 'saving' ? 'Сохранение…' : 'Сохранить';
+    revertBtn.hidden = state === 'saved';
     const problems = state === 'error' ? (err.data && err.data.details) || [] : [];
     container.querySelectorAll('.field-card').forEach((card) => {
       card.classList.toggle('has-error', problems.some((p) => p.fieldId === card.dataset.id));
     });
-    if (state === 'saving') status.textContent = 'Сохранение…';
-    if (state === 'dirty') status.textContent = 'Есть несохранённые изменения';
+    if (state === 'saving') statusText.textContent = 'Сохранение…';
+    if (state === 'dirty') statusText.textContent = 'Есть несохранённые изменения';
     if (state === 'saved') {
-      status.textContent = 'Все изменения сохранены';
+      statusText.textContent = 'Все изменения сохранены';
+      toast('Изменения сохранены');
       if (notice.querySelector('.notice.error')) notice.replaceChildren();
     }
     if (state === 'error') {
       const details = (err.data && err.data.details) || [];
-      status.textContent = details.length
+      statusText.textContent = details.length
         ? `Не сохранено: ${details.map((d) => d.message).join('; ')}`
         : `Не сохранено: ${err.message}`;
     }
   });
-  activeAutosave = autosave;
-  const changed = () => autosave.schedule();
+  activeEditor = saver;
+  const changed = () => saver.markDirty();
 
   const hasResponses = form.responsesCount > 0;
   const fieldsList = h('div', { class: 'editor' });
@@ -553,7 +609,7 @@ function renderEditor(container, form, { onTitle, notice }) {
   renderFields();
   fill(container,
     form.status === 'published' && hasResponses &&
-      h('div', { class: 'notice warning' }, 'Форма уже собирает ответы. Правки сразу увидят новые студенты; старые ответы сохранятся.'),
+      h('div', { class: 'notice warning' }, 'Форма уже собирает ответы. После сохранения правки сразу увидят новые студенты; старые ответы сохранятся.'),
     h('div', { class: 'editor' }, settings, h('h2', { style: 'margin-top:8px' }, 'Поля'), fieldsList, h('div', { class: 'card' }, h('div', { class: 'muted small', style: 'margin-bottom:8px' }, 'Добавить поле'), palette), status)
   );
 }

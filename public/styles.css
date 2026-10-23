@@ -23,6 +23,10 @@
   box-sizing: border-box;
 }
 
+[hidden] {
+  display: none !important;
+}
+
 body {
   margin: 0;
   background: var(--bg);
@@ -356,20 +360,33 @@ td.actions {
   background: var(--surface-2);
 }
 
-.save-status {
+/* Sticky bar at the bottom of the editor with the save button. */
+.save-bar {
   position: sticky;
   bottom: 0;
   z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
   font-size: 13px;
   color: var(--muted);
   background: var(--bg);
-  padding: 10px 0;
+  padding: 12px 0;
   border-top: 1px solid var(--border);
 }
 
-.save-status.error {
-  color: var(--danger);
+.save-bar .spacer {
+  flex: 1;
+}
+
+.save-bar.dirty .save-text {
+  color: var(--warning);
   font-weight: 600;
+}
+
+.save-bar.error .save-text {
+  color: var(--danger);
 }
 
 /* ---------- editor ---------- */

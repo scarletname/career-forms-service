@@ -58,25 +58,43 @@ function toast(message) {
 // confirm button is pressed; Esc, "Отмена" and a click outside give false.
 function confirmDialog({ title, message, confirmText = 'Подтвердить', cancelText = 'Отмена', danger = false }) {
   return new Promise((resolve) => {
-    const cancelBtn = h('button', { class: 'btn', value: 'cancel' }, cancelText);
+    // The result is delivered straight from the button / Esc / backdrop
+    // handlers. Relying on <form method="dialog"> or the "close" event is not
+    // enough: this dialog is also shown from the popstate handler, and during
+    // a history traversal Chrome neither submits such forms nor fires "close".
+    let done = false;
+    const finish = (result) => {
+      if (done) return;
+      done = true;
+      if (dialog.open) dialog.close();
+      dialog.remove();
+      resolve(result);
+    };
+    const cancelBtn = h('button', { type: 'button', class: 'btn', value: 'cancel', onclick: () => finish(false) }, cancelText);
+    const confirmBtn = h(
+      'button',
+      { type: 'button', class: danger ? 'btn danger-solid' : 'btn primary', value: 'confirm', onclick: () => finish(true) },
+      confirmText
+    );
     const dialog = h(
       'dialog',
       { class: 'confirm-dialog', 'aria-labelledby': 'confirm-title' },
       h(
-        'form',
-        { method: 'dialog', class: 'dialog-body' },
+        'div',
+        { class: 'dialog-body' },
         h('h2', { id: 'confirm-title' }, title),
         message && h('p', { class: 'confirm-message' }, message),
-        h('div', { class: 'dialog-actions' }, cancelBtn, h('button', { class: danger ? 'btn danger-solid' : 'btn primary', value: 'confirm' }, confirmText))
+        h('div', { class: 'dialog-actions' }, cancelBtn, confirmBtn)
       )
     );
     dialog.addEventListener('click', (e) => {
-      if (e.target === dialog) dialog.close('cancel');
+      if (e.target === dialog) finish(false);
     });
-    dialog.addEventListener('close', () => {
-      resolve(dialog.returnValue === 'confirm');
-      dialog.remove();
+    dialog.addEventListener('cancel', (e) => {
+      e.preventDefault(); // Esc
+      finish(false);
     });
+    dialog.addEventListener('close', () => finish(false));
     document.body.append(dialog);
     dialog.showModal();
     // Destructive actions start on "Отмена", so a stray Enter does not delete anything.

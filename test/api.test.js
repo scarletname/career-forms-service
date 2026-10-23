@@ -211,6 +211,10 @@ test('analytics trusts stored responses for sessions recorded before the fix', (
 test('unknown routes and bad JSON', async (t) => {
   const { call, stop, base } = await startServer();
   t.after(stop);
+  const home = await call('GET', '/');
+  assert.equal(home.status, 200);
+  assert.match(home.data, /href="\/admin"/, 'start page links to the admin panel');
+  assert.equal((await call('GET', '/admin')).status, 200);
   assert.equal((await call('GET', '/api/forms/nope')).status, 404);
   assert.equal((await call('GET', '/api/public/forms/nope')).status, 404);
   const res = await fetch(`${base}/api/forms`, {

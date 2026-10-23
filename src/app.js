@@ -139,7 +139,7 @@ function createApp({ store }) {
 
   app.use('/static', express.static(PUBLIC_DIR, { index: false }));
   app.use('/shared', express.static(SHARED_DIR, { index: false }));
-  app.get('/', (req, res) => res.redirect('/admin'));
+  app.get('/', (req, res) => res.sendFile(path.join(PUBLIC_DIR, 'index.html')));
   app.get(['/admin', '/admin/*'], (req, res) => res.sendFile(path.join(PUBLIC_DIR, 'admin.html')));
   app.get('/f/:slug', (req, res) => res.sendFile(path.join(PUBLIC_DIR, 'form.html')));
 

@@ -565,6 +565,81 @@ dialog::backdrop {
   word-break: break-word;
 }
 
+/* ---------- start page ---------- */
+
+.landing {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 72px 16px 64px;
+}
+
+.landing h1 {
+  font-size: 36px;
+  margin-bottom: 12px;
+}
+
+.landing-lead {
+  font-size: 18px;
+  color: var(--muted);
+  margin: 0 0 28px;
+}
+
+.landing-cta {
+  padding: 12px 24px;
+  font-size: 16px;
+}
+
+.landing-steps {
+  list-style: none;
+  counter-reset: step;
+  padding: 0;
+  margin: 48px 0 32px;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+}
+
+.landing-steps li {
+  counter-increment: step;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 16px;
+  display: grid;
+  gap: 4px;
+}
+
+.landing-steps li::before {
+  content: counter(step);
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--primary-soft);
+  color: var(--primary);
+  font-weight: 700;
+  display: grid;
+  place-items: center;
+  margin-bottom: 6px;
+}
+
+.landing-steps span {
+  color: var(--muted);
+  font-size: 14px;
+}
+
+@media (max-width: 640px) {
+  .landing {
+    padding-top: 40px;
+  }
+  .landing h1 {
+    font-size: 28px;
+  }
+  .landing-steps {
+    grid-template-columns: 1fr;
+  }
+}
+
 /* ---------- public form ---------- */
 
 .public {

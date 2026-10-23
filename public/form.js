@@ -236,7 +236,7 @@ function renderForm(form) {
         sessionId: sessionId(),
       });
       storage.remove(DRAFT_KEY);
-      renderSuccess(form, res.successMessage);
+      renderSuccess(res.successMessage);
     } catch (err) {
       submitBtn.disabled = false;
       submitBtn.textContent = 'Отправить';
@@ -336,7 +336,7 @@ function buildControl(field, onInput) {
   return { el, inputId, get: () => el.value, set: (v) => (el.value = String(v)) };
 }
 
-function renderSuccess(form, message) {
+function renderSuccess(message) {
   document.title = 'Отклик отправлен';
   fill(app,
     h(
@@ -344,8 +344,7 @@ function renderSuccess(form, message) {
       { class: 'card success' },
       h('div', { class: 'check-icon', 'aria-hidden': 'true' }, '✓'),
       h('h1', null, 'Отклик отправлен'),
-      h('p', { style: 'white-space:pre-wrap' }, message || 'Спасибо! Ваши ответы получены.'),
-      h('p', { class: 'muted small' }, form.title)
+      h('p', { style: 'white-space:pre-wrap' }, message || 'Спасибо! Ваши ответы получены.')
     )
   );
   window.scrollTo(0, 0);

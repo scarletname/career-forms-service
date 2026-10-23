@@ -107,7 +107,7 @@ async function renderList() {
       ),
       h('td', null, h('span', { class: `badge ${form.status}` }, STATUS_TITLES[form.status])),
       h('td', null, h('a', { href: `/admin/forms/${form.id}/responses`, 'data-link': true }, String(form.responsesCount))),
-      h('td', null, form.views ? formatPercent(form.responsesCount / form.views) : '—'),
+      h('td', null, formatPercent(form.conversion)),
       h('td', { class: 'muted small' }, formatDate(form.updatedAt)),
       h(
         'td',

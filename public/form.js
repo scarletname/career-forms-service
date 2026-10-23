@@ -36,15 +36,19 @@ const storage = {
 
 // ---------- analytics ----------
 
-// One session per student per form; it survives reloads so a student who
-// comes back later is not counted twice.
+// One session per student per form; it survives reloads and is kept after
+// submitting, so a student who comes back is not counted as a new visitor.
+// Cached in memory too: without localStorage every event would otherwise get
+// a fresh id and one student would look like several visitors.
+let cachedSessionId = null;
 function sessionId() {
-  let id = storage.get(SESSION_KEY);
-  if (!id) {
-    id = (crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2) + Date.now().toString(36));
-    storage.set(SESSION_KEY, id);
+  if (cachedSessionId) return cachedSessionId;
+  cachedSessionId = storage.get(SESSION_KEY);
+  if (!cachedSessionId) {
+    cachedSessionId = crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2) + Date.now().toString(36);
+    storage.set(SESSION_KEY, cachedSessionId);
   }
-  return id;
+  return cachedSessionId;
 }
 
 const sentEvents = new Set();
@@ -221,7 +225,6 @@ function renderForm(form) {
         sessionId: sessionId(),
       });
       storage.remove(DRAFT_KEY);
-      storage.remove(SESSION_KEY);
       renderSuccess(form, res.successMessage);
     } catch (err) {
       submitBtn.disabled = false;

@@ -142,6 +142,37 @@ test('analytics shows the field where students stop', async (t) => {
   assert.equal(stats.stoppedAtSubmit, 1);
 });
 
+test('conversion is the same in the list and in analytics, untracked responses included', async (t) => {
+  const { call, stop } = await startServer();
+  t.after(stop);
+  const { data: form } = await call('POST', '/api/forms', {
+    title: 'Конверсия',
+    fields: [{ id: 'name', type: 'short_text', label: 'Имя', required: true }],
+  });
+  await call('POST', `/api/forms/${form.id}/publish`);
+  const event = (sessionId, type) => call('POST', `/api/public/forms/${form.slug}/events`, { sessionId, type });
+  const submit = (sessionId) => call('POST', `/api/public/forms/${form.slug}/responses`, { answers: { name: 'A' }, sessionId });
+
+  for (const s of ['visitor-a', 'visitor-b', 'visitor-c', 'visitor-d']) await event(s, 'view');
+  await event('visitor-a', 'view'); // reload: still one visitor
+  assert.equal((await submit('visitor-a')).status, 201);
+  assert.equal((await submit('visitor-b')).status, 201);
+  await event('visitor-c', 'start');
+  assert.equal((await submit(undefined)).status, 201); // tracking never reached the server
+  assert.equal((await submit('visitor-a')).status, 201); // same student applies twice
+
+  // 5 visitors (4 tracked + 1 untracked), 3 of them submitted.
+  const stats = (await call('GET', `/api/forms/${form.id}/stats`)).data;
+  assert.equal(stats.views, 5);
+  assert.equal(stats.submitted, 3);
+  assert.equal(stats.responses, 4);
+  assert.equal(stats.conversion, 3 / 5);
+  assert.ok(stats.submitted <= stats.started && stats.started <= stats.views);
+
+  const listed = (await call('GET', '/api/forms')).data.forms.find((f) => f.id === form.id);
+  assert.equal(listed.conversion, stats.conversion);
+});
+
 test('unknown routes and bad JSON', async (t) => {
   const { call, stop, base } = await startServer();
   t.after(stop);

@@ -117,7 +117,10 @@ function createFormService(store) {
       return db()
         .forms.map((form) => {
           const responses = responsesOf(form.id).length;
-          const views = sessionsOf(form.id).length;
+          const sessions = sessionsOf(form.id);
+          const views = sessions.length;
+          // Same definition as the analytics tab: visitors who submitted / visitors.
+          const submitted = sessions.filter((s) => s.submittedAt).length;
           return {
             id: form.id,
             slug: form.slug,
@@ -126,6 +129,7 @@ function createFormService(store) {
             fieldsCount: form.fields.length,
             responsesCount: responses,
             views,
+            conversion: views ? submitted / views : null,
             createdAt: form.createdAt,
             updatedAt: form.updatedAt,
           };
@@ -221,20 +225,24 @@ function createFormService(store) {
       const { ok, values, errors } = validateAnswers(form.fields, answers);
       if (!ok) throw new HttpError(422, 'Проверьте ответы', errors);
       const ts = now();
-      const validSession = typeof sessionId === 'string' && SESSION_RE.test(sessionId) ? sessionId : null;
+      // Every response belongs to a session. If the browser did not send one
+      // (tracking failed, old client), the response still counts as a visit,
+      // so "submitted" can never exceed "opened" in the funnel.
+      const session = touchSession(
+        form,
+        typeof sessionId === 'string' && SESSION_RE.test(sessionId) ? sessionId : `anon-${crypto.randomUUID()}`,
+        ts
+      );
+      session.startedAt = session.startedAt || ts;
+      session.submittedAt = ts;
       const response = {
         id: crypto.randomUUID(),
         formId: form.id,
-        sessionId: validSession,
+        sessionId: session.sessionId,
         createdAt: ts,
         answers: values,
       };
       db().responses.push(response);
-      if (validSession) {
-        const session = touchSession(form, validSession, ts);
-        session.startedAt = session.startedAt || ts;
-        session.submittedAt = ts;
-      }
       await store.save();
       return response;
     },

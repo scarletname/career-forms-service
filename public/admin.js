@@ -22,7 +22,18 @@ async function navigate(path, { replace = false } = {}) {
 async function leaveEditor() {
   if (!activeAutosave) return true;
   const saved = await activeAutosave.flush();
-  if (!saved && !confirm('Последние изменения не сохранены. Всё равно уйти?')) return false;
+  if (
+    !saved &&
+    !(await confirmDialog({
+      title: 'Изменения не сохранены',
+      message: 'Последние правки не удалось сохранить. Если уйти, они пропадут.',
+      confirmText: 'Уйти без сохранения',
+      cancelText: 'Остаться',
+      danger: true,
+    }))
+  ) {
+    return false;
+  }
   activeAutosave = null;
   return true;
 }
@@ -149,8 +160,16 @@ async function duplicateForm(form) {
 }
 
 async function deleteForm(form) {
-  const extra = form.responsesCount ? ` Вместе с ней удалятся ${form.responsesCount} ${plural(form.responsesCount, 'ответ', 'ответа', 'ответов')}.` : '';
-  if (!confirm(`Удалить форму «${form.title}»?${extra}`)) return;
+  const extra = form.responsesCount
+    ? `Вместе с ней удалятся ${form.responsesCount} ${plural(form.responsesCount, 'ответ', 'ответа', 'ответов')} и статистика. `
+    : '';
+  const ok = await confirmDialog({
+    title: `Удалить форму «${form.title || 'Без названия'}»?`,
+    message: `${extra}Ссылка перестанет работать. Это действие нельзя отменить.`,
+    confirmText: 'Удалить',
+    danger: true,
+  });
+  if (!ok) return;
   await api('DELETE', `/api/forms/${form.id}`);
   toast('Форма удалена');
   renderList();
@@ -244,7 +263,15 @@ function publishBar(form, { onChange, notice }) {
   }
   items.push(h('a', { class: 'btn', href: `/f/${form.slug}?preview`, target: '_blank', rel: 'noopener' }, 'Предпросмотр'));
   if (form.status === 'published') {
-    items.push(h('button', { class: 'btn', onclick: () => confirm('Закрыть приём ответов? Студенты увидят, что набор завершён.') && setStatus('close') }, 'Закрыть приём'));
+    const closeForm = async () => {
+      const ok = await confirmDialog({
+        title: 'Закрыть приём ответов?',
+        message: 'Студенты увидят, что набор завершён. Ответы сохранятся, а приём можно будет открыть снова.',
+        confirmText: 'Закрыть приём',
+      });
+      if (ok) setStatus('close');
+    };
+    items.push(h('button', { class: 'btn', onclick: closeForm }, 'Закрыть приём'));
   } else {
     items.push(h('button', { class: 'btn primary', onclick: () => setStatus('publish') }, form.status === 'closed' ? 'Открыть снова' : 'Опубликовать'));
   }
@@ -430,10 +457,17 @@ function renderEditor(container, form, { onTitle, notice }) {
           {
             class: 'btn icon danger',
             title: 'Удалить поле',
-            onclick: () => {
-              const warn = hasResponses ? '\nОтветы на этот вопрос пропадут из таблицы и выгрузки.' : '';
-              if (!confirm(`Удалить поле «${field.label || TYPE_TITLES[field.type]}»?${warn}`)) return;
-              form.fields.splice(i, 1);
+            onclick: async () => {
+              const ok = await confirmDialog({
+                title: `Удалить поле «${field.label || TYPE_TITLES[field.type]}»?`,
+                message: hasResponses ? 'Ответы на этот вопрос пропадут из таблицы и выгрузки.' : null,
+                confirmText: 'Удалить',
+                danger: true,
+              });
+              if (!ok) return;
+              const index = form.fields.indexOf(field);
+              if (index === -1) return;
+              form.fields.splice(index, 1);
               renderFields();
               changed();
             },

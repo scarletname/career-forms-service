@@ -507,6 +507,34 @@ dialog::backdrop {
   overflow-y: auto;
 }
 
+.confirm-dialog {
+  width: min(440px, calc(100vw - 32px));
+}
+
+.confirm-message {
+  color: var(--muted);
+  margin: 8px 0 0;
+  white-space: pre-line;
+}
+
+.dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 20px;
+}
+
+.btn.danger-solid {
+  background: var(--danger);
+  border-color: var(--danger);
+  color: #fff;
+}
+
+.btn.danger-solid:hover {
+  background: #b82a5c;
+}
+
 .dialog-body dt {
   font-weight: 600;
   color: var(--muted);

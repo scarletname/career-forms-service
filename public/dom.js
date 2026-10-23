@@ -54,6 +54,36 @@ function toast(message) {
   toastTimer = setTimeout(() => (el.hidden = true), 2500);
 }
 
+// In-page replacement for window.confirm(). Resolves to true only when the
+// confirm button is pressed; Esc, "Отмена" and a click outside give false.
+function confirmDialog({ title, message, confirmText = 'Подтвердить', cancelText = 'Отмена', danger = false }) {
+  return new Promise((resolve) => {
+    const cancelBtn = h('button', { class: 'btn', value: 'cancel' }, cancelText);
+    const dialog = h(
+      'dialog',
+      { class: 'confirm-dialog', 'aria-labelledby': 'confirm-title' },
+      h(
+        'form',
+        { method: 'dialog', class: 'dialog-body' },
+        h('h2', { id: 'confirm-title' }, title),
+        message && h('p', { class: 'confirm-message' }, message),
+        h('div', { class: 'dialog-actions' }, cancelBtn, h('button', { class: danger ? 'btn danger-solid' : 'btn primary', value: 'confirm' }, confirmText))
+      )
+    );
+    dialog.addEventListener('click', (e) => {
+      if (e.target === dialog) dialog.close('cancel');
+    });
+    dialog.addEventListener('close', () => {
+      resolve(dialog.returnValue === 'confirm');
+      dialog.remove();
+    });
+    document.body.append(dialog);
+    dialog.showModal();
+    // Destructive actions start on "Отмена", so a stray Enter does not delete anything.
+    if (danger) cancelBtn.focus();
+  });
+}
+
 async function copyText(text) {
   try {
     await navigator.clipboard.writeText(text);

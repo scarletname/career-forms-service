@@ -732,7 +732,7 @@ async function renderAnalytics(container, form) {
         h(
           'div',
           { class: 'funnel-row' },
-          h('div', null, h('div', null, `${i + 1}. ${f.label || 'Без названия'}`, f.required ? h('span', { class: 'muted' }, ' *') : null), h('div', { class: 'muted small' }, `${TYPE_TITLES[f.type]} · заполнили ${f.filled} (${formatPercent(f.filledRate)})`)),
+          h('div', null, h('div', null, `${i + 1}. ${f.label || 'Без названия'}`, f.required ? h('span', { class: 'muted' }, ' *') : null), h('div', { class: 'muted small' }, `${TYPE_TITLES[f.type]}${f.required ? '' : ' · необязательное'} · заполнили ${f.filled} (${formatPercent(f.filledRate)})`)),
           h('div', { class: 'bar' }, h('div', { style: `width:${(f.filled / maxFilled) * 100}%` })),
           h('div', { class: f.abandonedHere ? 'drop' : 'drop none' }, f.abandonedHere ? `ушли здесь: ${f.abandonedHere}` : '—')
         )

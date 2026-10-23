@@ -15,7 +15,23 @@ function ratio(a, b) {
 
 // Funnel for one form: opened -> started -> submitted, plus per-field
 // numbers showing where students stop.
-function computeStats(form, sessions, responses, nowMs = Date.now()) {
+function computeStats(form, rawSessions, responses, nowMs = Date.now()) {
+  // Field events from the browser can be missed (Enter on the last field,
+  // browser autofill, a restored draft), but a submitted response says
+  // exactly which fields were answered. Merge that in, so a submitted form
+  // never shows its fields as unfilled.
+  const answeredBySession = new Map();
+  for (const r of responses) {
+    if (!r.sessionId) continue;
+    const ids = answeredBySession.get(r.sessionId) || new Set();
+    for (const id of Object.keys(r.answers)) ids.add(id);
+    answeredBySession.set(r.sessionId, ids);
+  }
+  const sessions = rawSessions.map((s) => {
+    const answered = answeredBySession.get(s.sessionId);
+    return answered ? { ...s, filled: [...new Set([...s.filled, ...answered])] } : s;
+  });
+
   const started = sessions.filter((s) => s.startedAt);
   const submitted = sessions.filter((s) => s.submittedAt);
   const unfinished = started.filter((s) => !s.submittedAt);

@@ -235,6 +235,7 @@ function createFormService(store) {
       );
       session.startedAt = session.startedAt || ts;
       session.submittedAt = ts;
+      for (const id of Object.keys(values)) if (!session.filled.includes(id)) session.filled.push(id);
       const response = {
         id: crypto.randomUUID(),
         formId: form.id,

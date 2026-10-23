@@ -119,7 +119,14 @@ function renderForm(form) {
     else errors.delete(field.id);
   }
 
+  // Counts a field as filled for analytics if it holds a valid answer.
+  function trackIfFilled(field) {
+    const value = controls.get(field.id).get();
+    if (!isEmpty(value) && !checkValue(field, value).error) track('field', field.id);
+  }
+
   let draftTimer = null;
+  const fieldTimers = new Map();
   function onInput(field) {
     track('start');
     if (errors.has(field.id)) {
@@ -129,16 +136,18 @@ function renderForm(form) {
     updateProgress();
     clearTimeout(draftTimer);
     draftTimer = setTimeout(() => storage.set(DRAFT_KEY, JSON.stringify({ savedAt: Date.now(), answers: values() })), 400);
+    // Not every answer ends with leaving the field (browser autofill, Enter
+    // on the last question), so also count it after a short pause in typing.
+    clearTimeout(fieldTimers.get(field.id));
+    fieldTimers.set(field.id, setTimeout(() => trackIfFilled(field), 1500));
   }
 
-  // Validate when the student leaves a question, and count it as filled
-  // for analytics only if the answer is valid.
+  // Validate when the student leaves a question.
   function onLeave(field) {
     const value = controls.get(field.id).get();
     if (isEmpty(value)) return;
-    const r = checkValue(field, value);
-    showError(field, r.error);
-    if (!r.error) track('field', field.id);
+    showError(field, checkValue(field, value).error);
+    trackIfFilled(field);
   }
 
   const questions = form.fields.map((field) => {
@@ -165,6 +174,8 @@ function renderForm(form) {
       const c = controls.get(id);
       if (c && !isEmpty(value)) c.set(value);
     }
+    // Restored answers are filled even though the student never touches them again.
+    for (const field of form.fields) trackIfFilled(field);
   }
 
   const submitBtn = h('button', { class: 'btn primary', type: 'submit' }, 'Отправить');

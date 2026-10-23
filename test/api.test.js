@@ -173,6 +173,41 @@ test('conversion is the same in the list and in analytics, untracked responses i
   assert.equal(listed.conversion, stats.conversion);
 });
 
+test('fields answered in a submission count as filled even without field events', async (t) => {
+  const { call, stop } = await startServer();
+  t.after(stop);
+  const { data: form } = await call('POST', '/api/forms', {
+    title: 'Поля',
+    fields: [
+      { id: 'name', type: 'short_text', label: 'Имя', required: true },
+      { id: 'email', type: 'email', label: 'Email', required: true },
+      { id: 'note', type: 'long_text', label: 'Комментарий' },
+    ],
+  });
+  await call('POST', `/api/forms/${form.id}/publish`);
+  // The browser reported only the first field (e.g. Enter was pressed on the
+  // last one, or the email was autofilled).
+  await call('POST', `/api/public/forms/${form.slug}/events`, { type: 'field', fieldId: 'name', sessionId: 'visitor-x1' });
+  await call('POST', `/api/public/forms/${form.slug}/responses`, {
+    answers: { name: 'Аня', email: 'a@b.ru' },
+    sessionId: 'visitor-x1',
+  });
+  const stats = (await call('GET', `/api/forms/${form.id}/stats`)).data;
+  const filled = Object.fromEntries(stats.fields.map((f) => [f.id, f.filled]));
+  assert.deepEqual(filled, { name: 1, email: 1, note: 0 });
+});
+
+test('analytics trusts stored responses for sessions recorded before the fix', () => {
+  const { computeStats } = require('../src/analytics');
+  const form = { fields: [{ id: 'a' }, { id: 'b' }] };
+  const ts = new Date().toISOString();
+  const sessions = [{ sessionId: 's1', viewedAt: ts, startedAt: ts, submittedAt: ts, lastActivityAt: ts, filled: ['a'] }];
+  const responses = [{ sessionId: 's1', answers: { a: 1, b: 2 } }];
+  const stats = computeStats(form, sessions, responses);
+  assert.deepEqual(stats.fields.map((f) => f.filled), [1, 1]);
+  assert.equal(sessions[0].filled.length, 1, 'stored session is not mutated');
+});
+
 test('unknown routes and bad JSON', async (t) => {
   const { call, stop, base } = await startServer();
   t.after(stop);
